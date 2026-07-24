@@ -1,15 +1,16 @@
 type Theme = 'light' | 'dark';
+type ThemePreference = 'system' | Theme;
 
 const STORAGE_KEY = 'theme';
 const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)';
 
-function storedTheme(): Theme | null {
-  if (typeof window === 'undefined') return null;
+function storedPreference(): ThemePreference {
+  if (typeof window === 'undefined') return 'system';
   try {
     const value = localStorage.getItem(STORAGE_KEY);
-    return value === 'light' || value === 'dark' ? value : null;
+    return value === 'light' || value === 'dark' || value === 'system' ? value : 'system';
   } catch {
-    return null;
+    return 'system';
   }
 }
 
@@ -18,11 +19,16 @@ function systemTheme(): Theme {
   return window.matchMedia(SYSTEM_THEME_QUERY).matches ? 'dark' : 'light';
 }
 
-function detect(): Theme {
-  return storedTheme() ?? systemTheme();
+function resolveTheme(preference: ThemePreference): Theme {
+  return preference === 'system' ? systemTheme() : preference;
 }
 
-export const theme = $state<{ value: Theme }>({ value: detect() });
+const initialPreference = storedPreference();
+
+export const theme = $state<{ preference: ThemePreference; value: Theme }>({
+  preference: initialPreference,
+  value: resolveTheme(initialPreference),
+});
 
 function renderTheme(t: Theme) {
   theme.value = t;
@@ -34,15 +40,18 @@ function renderTheme(t: Theme) {
     ?.setAttribute('content', t === 'dark' ? '#09090b' : '#fafafa');
 }
 
-export function applyTheme(t: Theme) {
-  renderTheme(t);
+function applyPreference(preference: ThemePreference) {
+  theme.preference = preference;
+  renderTheme(resolveTheme(preference));
   try {
-    localStorage.setItem(STORAGE_KEY, t);
+    localStorage.setItem(STORAGE_KEY, preference);
   } catch {}
 }
 
-export function toggleTheme() {
-  applyTheme(theme.value === 'dark' ? 'light' : 'dark');
+export function cycleTheme() {
+  const preferences: ThemePreference[] = ['system', 'light', 'dark'];
+  const currentIndex = preferences.indexOf(theme.preference);
+  applyPreference(preferences[(currentIndex + 1) % preferences.length]);
 }
 
 export function initThemeSync() {
@@ -50,7 +59,7 @@ export function initThemeSync() {
 
   const media = window.matchMedia(SYSTEM_THEME_QUERY);
   const syncSystemTheme = (event: MediaQueryListEvent) => {
-    if (storedTheme() === null) {
+    if (theme.preference === 'system') {
       renderTheme(event.matches ? 'dark' : 'light');
     }
   };
